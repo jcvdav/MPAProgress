@@ -25,3 +25,19 @@ MPAProgress:
 ├───rmd
 └───scripts
 ```
+
+## Data sources
+
+- [MEOW](https://www.worldwildlife.org/publications/marine-ecoregions-of-the-world-a-bioregionalization-of-coastal-and-shelf-areas)
+
+- [ICES_ecoregions](http://gis.ices.dk/shapefiles/ICES_ecoregions.zip)
+
+- [LME and LME_Offshore](http://www.lme.noaa.gov/index.php?option=com_content&view=category&layout=blog&id=48&Itemid=268)
+
+- [Longhurst biogeographical provinces](http://www.marineregions.org/downloads.php)
+
+- [WDPA_Mar2018](https://www.protectedplanet.net/marine)
+
+- [World EEZ](http://www.marineregions.org/downloads.php)
+
+- [GFW](https://globalfishingwatch.force.com/gfw/s/data-download)
