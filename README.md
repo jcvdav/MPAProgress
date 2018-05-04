@@ -36,7 +36,7 @@ MPAProgress:
 
 - [Longhurst biogeographical provinces](http://www.marineregions.org/downloads.php)
 
-- [WDPA_Mar2018](https://www.protectedplanet.net/marine)
+- [WDPA_Mar2018](https://www.protectedplanet.net/marine) (UNEP-WCMC and IUCN (2018) Marine Protected Planet [On-line], [May, 2018], Cambridge, UK: UNEP-WCMC and IUCN Available at: www.protectedplanet.net.)
 
 - [World EEZ](http://www.marineregions.org/downloads.php)
 
