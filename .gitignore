@@ -1,0 +1,5 @@
+raw_data/gfw_daily
+*.RData
+*.Rhistory
+*.Rproj.user
+*.Rproj
