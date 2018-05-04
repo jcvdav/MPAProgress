@@ -1,0 +1,207 @@
+---
+title: "Untitled"
+author: "Juan Carlos Villaseñor-Derbez"
+date: "3 de mayo de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(janitor)
+  library(here)
+  library(sf)
+  library(tidyverse)
+})
+
+## Clear the environment
+rm(list = ls())
+```
+
+# Calculate fishing effort by MEOW - country EEZ partition
+
+Some EEZ conain more than one MEOW, and some MEOW contain more than one EEZ or are split into various EEZs. I want to calculate the total fishing effort of for each pocket of EEZ and MEOW, which means I need to use both EEZ and MEOW shapefiles and break them into smaller pieces.
+
+I will be working with spatial data, so I want to make sure I have everything in the same projection
+
+```{r}
+proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+```
+
+
+First I read in the fishing effort
+
+```{r}
+mean_binned_fishing <- read.csv(here("data", "mean_yearly_fishing_effort.csv")) %>% 
+  filter(mean_fishing_hours > 0)
+```
+
+And the coastline of the world
+
+```{r}
+world_coastline <- st_read(dsn = here("data", "spatial"),
+                           layer = "world_coastline",
+                           quiet = T,
+                           stringsAsFactors = F)
+```
+
+Now the MEOW data
+
+```{r}
+meow <- read_sf(dsn = here("raw_data","spatial","MEOW"),
+                layer = "meow_ecos",
+                quiet = T,
+                stringsAsFactors = F) %>% 
+  janitor::clean_names() %>% 
+  st_transform(crs = proj) %>% 
+  mutate(area = st_area(.))
+```
+
+And finally I read in the EEZ data
+
+```{r}
+EEZ <- read_sf(dsn = here("raw_data","spatial","World_EEZ_v10_20180221"),
+               layer = "eez_v10",
+               quiet = T,
+               stringsAsFactors = F) %>% 
+  clean_names() %>% 
+  st_simplify(dTolerance = 0.1)%>% 
+  st_transform(crs = proj)
+```
+
+
+And now I visualize them all together
+
+```{r}
+p1 <- ggplot(mean_binned_fishing) +
+  geom_raster(aes(x = lon_bin, y = lat_bin, fill = mean_fishing_hours), interpolate = T) +
+  geom_sf(data = world_coastline, fill = "gray", show.legend = F) +
+  geom_sf(data = meow, aes(color = ecoregion), fill = "transparent", show.legend = F) +
+  geom_sf(data = EEZ, fill = "transparent", show.legend = F) +
+  theme_bw() +
+  scale_fill_viridis_c(trans = "log10") +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0))
+
+p1
+```
+
+Let's do a closeup to US-Mexico to view cases where EEZs and MEOW have different extents. For example, the Southern Californian Bight Marine Ecoregion is split for Southern California and The northern part of Baja. It also takes some part in land. I want to break each "color" into pieces defined by the EEZ shape.
+
+```{r}
+ggplot() +
+  geom_sf(data = world_coastline, fill = "gray", show.legend = F) +
+  geom_sf(data = meow, aes(fill = ecoregion), show.legend = F) +
+  geom_sf(data = EEZ, fill = "transparent", show.legend = F, size = 1) +
+  theme_bw() +
+  xlim(-120, -85) +
+  ylim(10, 40)
+```
+
+Let's try an example and see how to get it. First, select a couple of countries, filter from EEZs to only keep the ones present there. Then we intersect with meow to keep the part where they overlap.
+
+```{r}
+countries <- c("MEX", "GTM", "SLV", "HND", "NIC")
+
+eez_meow <- EEZ %>% 
+  dplyr::select(iso_ter1) %>% 
+  filter(iso_ter1 %in% countries) %>%
+  st_intersection(meow) %>% 
+  select(iso3 = iso_ter1, realm, province, ecoregion) %>% 
+  mutate(eez_ecoregion = paste(iso3, ecoregion),
+         area = st_area(.)) %>% 
+  arrange(iso3, realm, province, ecoregion, eez_ecoregion, area)
+```
+
+```{r}
+temp_meow <- meow %>% 
+  filter(ecoregion %in% eez_meow$ecoregion)
+
+ggplot() +
+  geom_sf(data = temp_meow, aes(fill = ecoregion), show.legend = F) +
+  geom_sf(data = eez_meow, fill = "transparent", color = "black") +
+  geom_sf(data = filter(world_coastline, iso3 %in% countries), fill = "gray", color = "black")
+```
+
+```{r}
+ggplot(eez_meow) +
+  geom_sf(aes(fill = new), color = "black")
+```
+
+I then want to have the ammount of fishing effort in every one of this polygons.
+
+```{r}
+masked_mean_binned_fishing <- mean_binned_fishing %>% 
+  filter(between(lon_bin, -120, -80),
+         between(lat_bin, 10, 35)) %>%
+  st_as_sf(coords = c("lon_bin", "lat_bin"), crs = proj) %>% 
+  st_intersection(y = eez_meow) %>%
+  sfc_as_cols(names = c("lon", "lat")) %>% 
+  st_set_geometry(NULL) %>% 
+  group_by(eez_ecoregion) %>% 
+  summarize(hours = sum(mean_fishing_hours)) %>% 
+  ungroup()
+```
+
+```{r}
+eez_meow %>% 
+  left_join(masked_mean_binned_fishing, by = "eez_ecoregion") %>% 
+  mutate(norm_hours = hours / area) %>% 
+  ggplot() +
+  geom_sf(aes(color = eez_ecoregion, fill = hours), size = 1) +
+  guides(color = F)
+```
+
+Now lets do it for all the EEZs and all the MEOWs
+
+```{r}
+eez_meow <- EEZ %>% 
+  dplyr::select(iso_ter1) %>% 
+  st_intersection(meow) %>% 
+  select(iso3 = iso_ter1, realm, province, ecoregion) %>% 
+  mutate(eez_ecoregion = paste(iso3, ecoregion),
+         area = st_area(.)) %>% 
+  arrange(iso3, realm, province, ecoregion, eez_ecoregion, area)
+```
+
+Masking all fishing effort takes a while...
+
+```{r}
+masked_mean_binned_fishing <- mean_binned_fishing %>% 
+  st_as_sf(coords = c("lon_bin", "lat_bin"), crs = proj) %>% 
+  st_intersection(y = eez_meow) %>%
+  sfc_as_cols(names = c("lon", "lat")) %>% 
+  st_set_geometry(NULL) %>% 
+  group_by(eez_ecoregion) %>% 
+  summarize(hours = sum(mean_fishing_hours)) %>% 
+  ungroup()
+```
+
+```{r}
+fishing_by_eez_meow <- eez_meow %>% 
+  left_join(masked_mean_binned_fishing, by = "eez_ecoregion") %>% 
+  mutate(norm_hours = hours / area)
+
+ggplot() +
+  geom_sf(data = world_coastline, fill = "black") +
+  geom_sf(data = fishing_by_eez_meow, aes(fill = hours)) +
+  guides(color = F) +
+  scale_fill_viridis_c(trans = "log10") +
+  theme_dark() +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0))
+```
+
+
+
+
+
+
+
+
+
+
+
