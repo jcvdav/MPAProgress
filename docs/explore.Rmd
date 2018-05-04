@@ -6,16 +6,23 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = T,
+                      warning = F,
+                      mesage = F)
 ```
 
 ```{r}
+# Load packages
 suppressPackageStartupMessages({
   library(janitor)
   library(here)
+  library(lwgeom)
   library(sf)
   library(tidyverse)
 })
+
+# Source functions
+source("scripts/sfc_as_cols.R")
 
 ## Clear the environment
 rm(list = ls())
@@ -128,7 +135,7 @@ ggplot() +
 
 ```{r}
 ggplot(eez_meow) +
-  geom_sf(aes(fill = new), color = "black")
+  geom_sf(aes(fill = eez_ecoregion), color = "black")
 ```
 
 I then want to have the ammount of fishing effort in every one of this polygons.
@@ -163,7 +170,8 @@ eez_meow <- EEZ %>%
   st_intersection(meow) %>% 
   select(iso3 = iso_ter1, realm, province, ecoregion) %>% 
   mutate(eez_ecoregion = paste(iso3, ecoregion),
-         area = st_area(.)) %>% 
+         area = st_area(.),
+         area = as.numeric(area)/1e6) %>% 
   arrange(iso3, realm, province, ecoregion, eez_ecoregion, area)
 ```
 
@@ -183,14 +191,195 @@ masked_mean_binned_fishing <- mean_binned_fishing %>%
 ```{r}
 fishing_by_eez_meow <- eez_meow %>% 
   left_join(masked_mean_binned_fishing, by = "eez_ecoregion") %>% 
+  mutate(area = area) %>% 
   mutate(norm_hours = hours / area)
 
 ggplot() +
-  geom_sf(data = world_coastline, fill = "black") +
-  geom_sf(data = fishing_by_eez_meow, aes(fill = hours)) +
+  geom_sf(data = world_coastline) +
+  geom_sf(data = fishing_by_eez_meow, aes(fill = norm_hours)) +
   guides(color = F) +
   scale_fill_viridis_c(trans = "log10") +
-  theme_dark() +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0))
+```
+
+# Calculate MPA coverage by MEOW - country EEZ partition
+
+```{r}
+# Read the points shapefile
+mpas_points <- read_sf(dsn = here("raw_data","spatial","WDPA_Mar2018"),
+                layer = "WDPA_Mar2018_marine-shapefile-points",
+                quiet = T,
+                stringsAsFactors = F) %>% 
+  janitor::clean_names() %>% 
+  st_transform(crs = proj)
+
+# Read the polygon shapefile
+mpas_poly <- read_sf(dsn = here("raw_data","spatial","WDPA_Mar2018"),
+                layer = "WDPA_Mar2018_marine-shapefile-polygons",
+                quiet = T,
+                stringsAsFactors = F) %>% 
+  st_make_valid() %>% 
+  st_centroid() %>% 
+  janitor::clean_names() %>% 
+  st_transform(crs = proj)
+```
+
+I need to join the plygons (now points) and points to have a single `sf` object with all MPAs
+
+```{r}
+all_mpas <- mpas_poly %>% 
+  select(-c(gis_area, gis_m_area)) %>% 
+  rbind(mpas_points) %>% 
+  filter(!iucn_cat %in% c("Not Applicable", "Not Reported", "Not Assigned"))
+```
+
+Let's visualize this
+
+```{r}
+all_mpas_dataframe <- all_mpas %>% 
+  st_cast(to = "MULTIPOINT") %>% 
+  sfc_as_cols(names = c("lon","lat")) %>% 
+  select(-V1) %>% 
+  as.tibble() %>% 
+  filter(rep_m_area > 0) %>% 
+  mutate(re)
+
+p <- ggplot() +
+  geom_sf(data = world_coastline, fill = "transparent") +
+  geom_sf(data = eez_meow) +
+  geom_point(data = all_mpas_dataframe, aes(x = lon, y = lat, color = iucn_cat), size = 1, alpha = 0.8) +
+  scale_color_brewer(palette = "Paired") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+pm <- ggExtra::ggMarginal(p, groupFill = TRUE, groupColour = T)
+
+grid::grid.newpage()
+grid::grid.draw(pm)
+```
+
+
+
+
+```{r}
+masked_mpas <- all_mpas  %>% 
+  st_intersection(y = eez_meow) %>%
+  sfc_as_cols(names = c("lon", "lat")) %>% 
+  st_set_geometry(NULL) %>% 
+  group_by(eez_ecoregion) %>% 
+  summarize(protected_area = sum(rep_area)) %>% 
+  ungroup()
+```
+
+
+```{r}
+mpas_by_eez_meow <- eez_meow %>% 
+  left_join(masked_mpas, by = "eez_ecoregion") %>%
+  mutate(norm_protected_area = protected_area / area) %>% 
+  dplyr::filter(!is.na(norm_protected_area),
+                norm_protected_area <= 1)
+
+ggplot() +
+  geom_sf(data = world_coastline) +
+  geom_sf(data = mpas_by_eez_meow, aes(fill = norm_protected_area)) +
+  guides(color = F) +
+  scale_fill_viridis_c() +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0))
+```
+
+La grafica de arriba esta mal. Tuve que fitlrar los datos normalizados < 1 para quitar los errores. Los errores casi seguro son causados por tener un centroide de una AMP que es muy grande, pero el ccentroide cae en un pedacito de una eez-meow recortada.
+
+Voy a tratar de hacer lo mismo, pero agrupando por realm
+
+# Repeat exercise by realm
+
+## Base units
+
+Get a shapefile of only realms
+
+```{r}
+realms <- meow %>% 
+  group_by(realm) %>% 
+  summarize(area = sum(area)) %>% 
+  ungroup()
+```
+
+Crop EEZs into realms
+
+```{r}
+eez_realm <- EEZ %>% 
+  dplyr::select(iso_ter1) %>% 
+  st_intersection(realms) %>% 
+  select(iso3 = iso_ter1, realm) %>% 
+  mutate(eez_realm = paste(iso3, realms),
+         area = st_area(.),
+         area = as.numeric(area)/1e6) %>% 
+  arrange(iso3, realm, eez_realm, area)
+```
+
+## Fishing
+
+Get fishing effort by eez_realm
+
+```{r}
+masked_mean_binned_fishing_realm <- mean_binned_fishing %>% 
+  st_as_sf(coords = c("lon_bin", "lat_bin"), crs = proj) %>% 
+  st_intersection(y = eez_realm) %>%
+  sfc_as_cols(names = c("lon", "lat")) %>% 
+  st_set_geometry(NULL) %>% 
+  group_by(eez_realm) %>% 
+  summarize(hours = sum(mean_fishing_hours)) %>% 
+  ungroup()
+```
+
+Join to the data and plot
+
+```{r}
+fishing_by_eez_realm <- eez_realm %>% 
+  left_join(masked_mean_binned_fishing_realm, by = "eez_realm") %>% 
+  mutate(area = area) %>% 
+  mutate(norm_hours = hours / area)
+
+ggplot() +
+  geom_sf(data = world_coastline) +
+  geom_sf(data = fishing_by_eez_realm, aes(fill = norm_hours)) +
+  guides(color = F) +
+  scale_fill_viridis_c(trans = "log10") +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0))
+```
+
+## MPAS
+
+Get mpas in each realm
+
+```{r}
+masked_mpas_realm <- all_mpas  %>% 
+  st_intersection(y = eez_realm) %>%
+  sfc_as_cols(names = c("lon", "lat")) %>% 
+  st_set_geometry(NULL) %>% 
+  group_by(eez_realm) %>% 
+  summarize(protected_area = sum(rep_area)) %>% 
+  ungroup()
+```
+
+Join to the data and plot
+
+```{r}
+mpas_by_eez_realm <- eez_realm %>% 
+  left_join(masked_mpas_realm, by = "eez_realm") %>%
+  mutate(norm_protected_area = protected_area / area) %>% 
+  dplyr::filter(!is.na(norm_protected_area),
+                norm_protected_area > 1)
+
+ggplot() +
+  geom_sf(data = world_coastline) +
+  geom_sf(data = mpas_by_eez_realm, aes(fill = norm_protected_area)) +
+  guides(color = F) +
+  scale_fill_viridis_c() +
   scale_y_continuous(expand = c(0, 0)) +
   scale_x_continuous(expand = c(0, 0))
 ```
@@ -198,10 +387,23 @@ ggplot() +
 
 
 
+Hay que revisar que todas las AMPS esten en ambos sets de datos y si no, juntalros
 
+Tambien hay que ver por que chingados porcentage de area protegida da tan alto
 
+```{r}
+cook_eez <- filter(EEZ, iso_ter1 == "COK")
+cook_eez_meow <- filter(eez_realm, iso3 == "COK")
+realm <- filter(meow, realm == "Eastern Indo-Pacific")
+province <- filter(meow, province %in% c("Central Polynesia", "Southeast Polynesia"))
+cook_MPA <- mpas_poly %>% 
+  filter(wdpaid == 555624907)
 
-
-
+ggplot() +
+  geom_sf(data = province, fill = "transparent", aes(color = province)) +
+  geom_sf(data = cook_eez_meow, fill = "red") +
+  geom_sf(data = cook_MPA, color = "blue", size = 2, fill = "transparent")
+  
+```
 
 
