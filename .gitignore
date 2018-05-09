@@ -6,3 +6,4 @@ raw_data/gfw_daily
 logs/
 *.log
 .Rproj.user
+.RDataTmp
