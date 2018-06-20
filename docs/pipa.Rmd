@@ -1,0 +1,164 @@
+---
+title: "PIPA"
+author: "Juan Carlos Villaseñor-Derbez"
+date: "15 de mayo de 2018"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T,
+                      warning = F,
+                      mesage = F)
+```
+
+# Housekeeping
+
+```{r}
+## Clear the environment
+rm(list = ls())
+
+# Load packages
+suppressPackageStartupMessages({
+  library(janitor)
+  library(gganimate)
+  library(here)
+  library(lwgeom)
+  library(sf)
+  library(tidyverse)
+})
+
+# Source functions
+source(here("scripts","sfc_as_cols.R"))
+
+deg2rad <- function(deg){
+  (deg * pi) / (180)
+  }
+```
+
+```{r}
+EEZ <- read_sf(dsn = here("raw_data","spatial","World_EEZ_v10_20180221"),
+               layer = "eez_v10",
+               quiet = T,
+               stringsAsFactors = F) %>% 
+  clean_names() %>% 
+  filter(iso_ter1 %in% c("KIR", "USA", "TKL", "ASM", "COK", "PYF", "MEX")) %>% 
+  select(iso3 = iso_ter1)
+
+palmyra <- read_sf(dsn = here("raw_data", "spatial", "eez_palmyra"),
+                   layer = "eez",
+                   quiet = T,
+                   stringsAsFactors = F) %>% 
+  clean_names() %>% 
+  select(iso3 = iso_ter1)
+
+HB <- read_sf(dsn = here("raw_data", "spatial", "HB_islands"),
+                   layer = "eez",
+                   quiet = T,
+                   stringsAsFactors = F) %>% 
+  clean_names() %>% 
+  select(iso3 = iso_ter1)
+
+jarvis <- read_sf(dsn = here("raw_data", "spatial", "jarvis_island"),
+                   layer = "eez",
+                   quiet = T,
+                   stringsAsFactors = F) %>% 
+  clean_names() %>% 
+  select(iso3 = iso_ter1)
+
+EEZ2 <- rbind(EEZ, palmyra, HB, jarvis)
+
+EEZ_Mex <- filter(EEZ, iso3 == "MEX")
+
+```
+
+```{r}
+mpa <- read_sf(dsn = here("raw_data","spatial","WDPA_Mar2018"),
+               layer = "WDPA_Mar2018_marine-shapefile-polygons",
+               quiet = T,
+               stringsAsFactors = F) %>% 
+  janitor::clean_names()
+
+pipa <- mpa %>%
+  filter(wdpaid == 309888)
+```
+
+```{r}
+pipa_fishing <- read.csv(here("data", "pipa_total_yearly_fishing_effort.csv")) %>% 
+  filter(total_fishing_hours > 0) %>% 
+  mutate(date = lubridate::as_date(paste(year, month, "01", sep = "-"))) %>% 
+  group_by(year, lon_bin, lat_bin) %>% 
+  summarize(total_fishing_hours = sum(total_fishing_hours))
+```
+
+```{r}
+p2012 <- matrix(c(-180, -16, -173, -16, -173, -15 , -180 , -15 , -180, -16), ncol=2, byrow=TRUE)
+p2013 <- matrix(c(-180, -16, -166, -16, -166, -15 , -180 , -15 , -180, -16), ncol=2, byrow=TRUE)
+p2014 <- matrix(c(-180, -16, -159, -16, -159, -15 , -180 , -15 , -180, -16), ncol=2, byrow=TRUE)
+p2015 <- matrix(c(-180, -16, -152, -16, -152, -15 , -180 , -15 , -180, -16), ncol=2, byrow=TRUE)
+p2016 <- matrix(c(-180, -16, -145, -16, -145, -15 , -180 , -15 , -180, -16), ncol=2, byrow=TRUE)
+
+poly_list <- list(p2012, p2013, p2014, p2015, p2016)
+
+polygons <- st_sf(date = 2012:2016, geometry = st_sfc(lapply(poly_list, function(x){st_polygon(list(x))})), crs = 4326)
+
+po_2016 <- st_polygon(list(p2016))
+```
+
+
+```{r}
+p1 <- filter(pipa_fishing, lon_bin < 0) %>% 
+  ggplot() +
+  geom_raster(aes(x = lon_bin, y = lat_bin, fill = total_fishing_hours, frame = year), interpolate = T) +
+  geom_sf(data = EEZ2, fill = "transparent", color = "black", size = 1) +
+  geom_sf(data = pipa, fill = "transparent", color = "red", linetype = "dashed", size = 1) +
+  geom_sf(data = polygons, fill = "transparent", color = "black", linetype = "dashed") +
+  geom_sf(data = polygons, aes(frame = date), fill = "steelblue", color = "black") +
+  scale_fill_viridis_c(trans = "log10", name = "Fishing Hours") +
+  xlim(-180, -145) +
+  ylim(-16, 10) +
+  theme_bw() +
+  theme(panel.grid.major = element_line(colour = "transparent"),
+        legend.position = "top") +
+  labs(x = "", y = "", caption = "Phoenix Islands Protected Area")
+
+gganimate(p1, filename = here("docs","pipa.gif"), interval = 1.5)
+```
+
+```{r}
+pp <- mpa %>% 
+  filter(wdpaid %in% c(555622041, 555624307)) %>%
+  st_make_valid()
+```
+
+```{r}
+pp_fishing <- read.csv(here("data", "pp_total_yearly_fishing_effort.csv")) %>% 
+  filter(total_fishing_hours > 0) %>% 
+  mutate(date = lubridate::as_date(paste(year, month, "01", sep = "-"))) %>% 
+  group_by(year, lon_bin, lat_bin) %>% 
+  summarize(total_fishing_hours = sum(total_fishing_hours))
+```
+
+```{r}
+p2 <- filter(pp_fishing) %>% 
+  ggplot() +
+  geom_raster(aes(x = lon_bin, y = lat_bin, fill = total_fishing_hours, frame = year), interpolate = T) +
+  geom_sf(data = EEZ_Mex, fill = "transparent", color = "black", size = 1) +
+  geom_sf(data = pp, fill = "transparent", color = "red", linetype = "dashed", size = 1) +
+  # geom_sf(data = polygons, fill = "transparent", color = "black", linetype = "dashed") +
+  # geom_sf(data = polygons, aes(frame = date), fill = "steelblue", color = "black") +
+  scale_fill_viridis_c(trans = "log10", name = "Fishing Hours") +
+  xlim(-117, -108) +
+  ylim(15, 20) +
+  theme_bw() +
+  theme(panel.grid.major = element_line(colour = "transparent")) +
+  labs(x = "", y = "", caption = "Phoenix Islands Protected Area")
+
+gganimate(p2, filename = here("docs","pp.gif"), interval = 1.5)
+```
+
+
+
+
+
+

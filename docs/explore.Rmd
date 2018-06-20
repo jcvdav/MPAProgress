@@ -1,17 +1,10 @@
 ---
-title: "Untitled"
+title: "Exploratory analysis"
 author: "Juan Carlos Villaseñor-Derbez"
-date: "3 de mayo de 2018"
+date: "Last update `r Sys.Date()`"
 output: html_document
 ---
 
-# Questions
-
-The three main questions are:
-
-- Where were MPAs implemented in 2012 - 2018, and hos does this relate to fishing effort and a lag in protection (by counry / by marine ecoregion)?
-- What are areas of opportunity in terms of an MPA Kobe plot?
-- What has happened to fishing effort when MPA is put in place? Is it re-distributed or reduced?
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = T,
@@ -83,15 +76,15 @@ EEZ <- read_sf(dsn = here("raw_data","spatial","World_EEZ_v10_20180221"),
                quiet = T,
                stringsAsFactors = F) %>% 
   clean_names() %>% 
-  st_simplify(dTolerance = 0.1)%>% 
-  st_transform(crs = proj)
+  st_transform(crs = proj) %>% 
+  st_cast(to = "POLYGON")
 ```
 
 
 And now I visualize them all together
 
 ```{r}
-p1 <- ggplot(mean_binned_fishing) +
+ggplot(mean_binned_fishing) +
   geom_raster(aes(x = lon_bin, y = lat_bin, fill = mean_fishing_hours), interpolate = T) +
   geom_sf(data = world_coastline, fill = "gray", show.legend = F) +
   geom_sf(data = meow, aes(color = ecoregion), fill = "transparent", show.legend = F) +
@@ -100,8 +93,6 @@ p1 <- ggplot(mean_binned_fishing) +
   scale_fill_viridis_c(trans = "log10") +
   scale_y_continuous(expand = c(0, 0)) +
   scale_x_continuous(expand = c(0, 0))
-
-p1
 ```
 
 Let's do a closeup to US-Mexico to view cases where EEZs and MEOW have different extents. For example, the Southern Californian Bight Marine Ecoregion is split for Southern California and The northern part of Baja. It also takes some part in land. I want to break each "color" into pieces defined by the EEZ shape.
@@ -228,6 +219,9 @@ mpas_poly <- read_sf(dsn = here("raw_data","spatial","WDPA_Mar2018"),
                 quiet = T,
                 stringsAsFactors = F) %>% 
   st_make_valid() %>% 
+  st_cast(to = "POLYGON") %>% 
+  mutate(area2 = st_area(.),
+         area2 = area2 / 1e6) %>% 
   st_centroid() %>% 
   janitor::clean_names() %>% 
   st_transform(crs = proj)
@@ -274,10 +268,11 @@ masked_mpas <- all_mpas  %>%
   sfc_as_cols(names = c("lon", "lat")) %>% 
   st_set_geometry(NULL) %>% 
   group_by(eez_ecoregion) %>% 
-  summarize(protected_area = sum(rep_area)) %>% 
-  ungroup()
+  mutate(protected_area = sum(rep_area)) %>% 
+  ungroup() %>% 
+  mutate(protected_area = protected_area / area,
+         protected_area_i = rep_area / area)
 ```
-
 
 ```{r}
 mpas_by_eez_meow <- eez_meow %>% 
@@ -414,9 +409,101 @@ ggplot() +
   
 ```
 
+Identify MPAs that have proportions > 1
+
+```{r}
+select(masked_mpas, realm, province, ecoregion, eez_ecoregion, wdpaid, wdpa_pid, orig_name, area, rep_area, protected_area_i, protected_area) %>% 
+  filter(protected_area > 1 | protected_area_i > 1) %>%
+  View()
+```
+
+```{r}
+# Realm
+realm <- filter(meow, realm == "Eastern Indo-Pacific") %>% 
+  mutate(area = as.numeric(area) / 1e6)
+
+# Fishing
+fishing_points <- mean_binned_fishing %>% 
+  filter(between(lat_bin, -30, 30),
+         between(lon_bin, -180, -100))
+
+masked_primm_fishing <- fishing_points %>% 
+  st_as_sf(coords = c("lon_bin", "lat_bin"), crs = proj) %>% 
+  st_intersection(y = realm) %>%
+  sfc_as_cols(names = c("lon", "lat")) %>% 
+  st_set_geometry(NULL) %>% 
+  group_by(ecoregion) %>% 
+  summarize(hours = sum(mean_fishing_hours)) %>% 
+  ungroup()
+
+#MPAs
+primm <- read_sf(dsn = here("raw_data","spatial","WDPA_Mar2018"),
+                 layer = "WDPA_Mar2018_marine-shapefile-polygons",
+                 quiet = T,
+                 stringsAsFactors = F) %>% 
+  janitor::clean_names() %>%
+  filter(wdpaid %in% c(400011, 555624907, 555624172, 555586873, 555543712, 220201)) %>%
+  st_make_valid() %>% 
+  st_cast(to = "POLYGON") %>%
+  mutate(area2 = st_area(.),
+         area2 = as.numeric(area2) / 1e6) %>%
+  janitor::clean_names() %>% 
+  st_transform(crs = proj)
+
+broken_mpas <- primm %>% 
+  st_intersection(realm) %>% 
+  mutate(new_name = paste(ecoregion, wdpaid),
+         area2 = st_area(.),
+         area2 = as.numeric(area2) / 1e6) %>% 
+  select(ecoregion, wdpaid, new_name, area2)
+
+masked_primm_protection <- broken_mpas %>% 
+  st_intersection(y = realm) %>%
+  group_by(ecoregion, area) %>% 
+  summarize(area2 = sum(area2)) %>% 
+  ungroup() %>% 
+  mutate(protected_area = area2 / area) %>% 
+  st_set_geometry(NULL) %>%
+  select(ecoregion, area2, protected_area)
+
+realm2 <- realm %>% 
+  left_join(masked_primm_fishing, by = "ecoregion") %>% 
+  left_join(masked_primm_protection, by = "ecoregion") %>% 
+  mutate(norm_hours = hours / area)
+
+ggplot() +
+  geom_raster(data = fishing_points, aes(x = lon_bin, y = lat_bin, fill = mean_fishing_hours)) +
+  geom_sf(data = realm2, aes(color = protected_area), alpha = 0.1, size = 2) +
+  geom_sf(data = primm, fill = "transparent", color = "red") +
+  scale_fill_viridis_c(trans = "log10") +
+  scale_color_gradientn(colors = colorRamps::matlab.like(20)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  xlim(-180, -100)
+
+ggplot() +
+  geom_sf(data = realm2, aes(fill = protected_area)) +
+  geom_sf(data = broken_mpas, fill = "transparent", color = "red") +
+  scale_fill_viridis_c() +
+  xlim(-180, -100)
+
+realm2 %>% 
+  replace_na(replace = list(protected_area = 0)) %>% 
+  ggplot(aes(x = protected_area, y = norm_hours, color = ecoregion)) +
+  geom_point() +
+  geom_vline(xintercept = 0.1, linetype = "dashed") +
+  geom_hline(aes(yintercept = mean(norm_hours, na.rm = T)), linetype = "dashed")
+
+```
+
 Cosas por hacer:
 
 - Ver cuales AMPs estan quedando fuera, y la forma de incorporarlas a su MEOW / REALM respectivo
 - Identificar AMPs que dan proporciones > 1 y ver como resolverlas
+
+```{r}
+mpas_poly
+```
+
 
 

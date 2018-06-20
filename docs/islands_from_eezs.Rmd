@@ -1,0 +1,121 @@
+---
+title: "Getting Islands from EEZs"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressPackageStartupMessages({
+  library(sf)
+  library(janitor)
+  library(here)
+  library(tidyverse)
+})
+```
+
+
+First load the EEX v10 layer, select only Kiribati
+
+```{r}
+EEZ <- read_sf(dsn = here("raw_data","spatial","World_EEZ_v10_20180221"),
+               layer = "eez_v10",
+               quiet = T,
+               stringsAsFactors = F) %>% 
+  clean_names( )%>% 
+  filter(iso_ter1 %in% c("KIR"))
+```
+
+Keep only the first two polygons for visualization purposes
+
+```{r}
+EEZ_kir <- EEZ %>% 
+  head(2)
+```
+
+Look at the dimension, it has two polygons (EEZ) with 23 variables
+
+```{r}
+dim(EEZ_kir)
+```
+
+Visualize it
+
+```{r}
+ggplot(EEZ_kir) +
+  geom_sf() +
+  theme_bw()
+```
+
+To extract the coastline, convert `EEZ_kir` to boundaries and then to linestring, and then again to polygon
+
+```{r}
+all_features <- EEZ_kir %>% 
+  st_boundary() %>% 
+  st_cast(to = "LINESTRING") %>% 
+  st_cast(to = "POLYGON") %>% 
+  mutate(id = 1:length(iso_ter1))
+```
+
+Check dimensions, now we have 37 polygons, one for each island and one for each EEZ blob
+
+```{r}
+dim(all_features)
+```
+
+
+We don't want the EEZs for this. We plot and identify which ones these are. Some facets look like there's nothing, but those are just very small islands.
+
+```{r}
+ggplot(all_features) + 
+  geom_sf() +
+  facet_wrap(~id) +
+  theme_bw()
+```
+
+We see that id's 1 and 12 are EEZs, and we sant to filter them out. Here I filter them by the id I created, but perhaps area could be a better indicator. (remove all features with area more than X km^2)
+
+```{r}
+coastline <- all_features %>% 
+  filter(!id %in% c(1, 12))
+```
+
+Check dimensions again
+```{r}
+dim(coastline)
+```
+
+And plot the island coastline
+
+```{r}
+ggplot(coastline) +
+  geom_sf() +
+  theme_bw()
+```
+
+The entire process is:
+
+```{r}
+coastline <- read_sf(dsn = here("raw_data","spatial","World_EEZ_v10_20180221"),
+               layer = "eez_v10",
+               quiet = T,
+               stringsAsFactors = F) %>% 
+  clean_names( )%>% 
+  filter(iso_ter1 %in% c("KIR")) %>% 
+  head(2) %>% 
+  st_boundary() %>% 
+  st_cast(to = "LINESTRING") %>% 
+  st_cast(to = "POLYGON") %>% 
+  mutate(id = 1:length(iso_ter1)) %>% 
+  filter(!id %in% c(1, 12)) #a smarter filter can be used here
+
+ggplot(coastline) + 
+  geom_sf() +
+  theme_bw()
+```
+
+
+
+

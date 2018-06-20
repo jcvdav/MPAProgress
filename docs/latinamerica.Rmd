@@ -1,0 +1,314 @@
+---
+title: "latin_america"
+author: "Juan Carlos Villaseñor-Derbez"
+date: "Last update `r Sys.Date()`"
+output: html_document
+---
+
+# Ideal outline:
+
+- EEZ-ecoregions
+  - Create a shapefile of ecoregions broken down by EEZ `st_intersection()`
+  - Calculate the area of these new pieces `st_area()`
+
+- MPAs
+  - For polygons
+    - Break every MULTIPOLYGON into single POLYGONS `st_cast()`
+    - Calculate the area of each of these new polygons
+  - For points
+    - Create a buffer arround the point, with a radius that creates an equivalent area
+    - Convert buffer into a polygon
+    - Make sure area of polygon is the same as area in the data
+    - Make sure to have an object of class POLYGON and not MULTIPOLYGON
+  - Put polygons and points (now also polygons) together
+  - Break these new polygons by the eez-ecoregion polygons calculated before
+  - Group_by eez-ecoregion and calculate total and relative protection
+  
+- Fishing effort
+  - Mask fishing effort points to keep things within each eez-ecoregion
+  
+- Put these together
+  
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T,
+                      warning = F,
+                      mesage = F)
+```
+
+# Housekeeping
+
+```{r}
+## Clear the environment
+rm(list = ls())
+
+# Load packages
+suppressPackageStartupMessages({
+  library(janitor)
+  library(here)
+  library(lwgeom)
+  library(sf)
+  library(tidyverse)
+})
+
+# Source functions
+source(here("scripts","sfc_as_cols.R"))
+
+deg2rad <- function(deg){
+  (deg * pi) / (180)
+  }
+```
+
+```{r}
+proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+
+countries <- c("MEX", "GTM", "SLV", "HND", "NIC", "CRI", "PAN", "COL","PER", "ECU", "CHL")
+```
+
+```{r}
+coastline <- st_read(dsn = here("data", "spatial"),
+                     layer = "world_coastline",
+                     quiet = T,
+                     stringsAsFactors = F) %>% 
+  filter(iso3 %in% countries) %>% 
+  mutate(coastline = 1) %>% 
+  group_by(coastline) %>% 
+  summarize(n = n())
+```
+
+# Part1 EEZ Ecoregions
+
+## Create a shapefile of ecoregions broken down by EEZ `st_intersection()`
+
+Load EEZ data, filter by countries we want, reproject and keep only relevant variables
+
+```{r}
+EEZ <- read_sf(dsn = here("raw_data","spatial","World_EEZ_v10_20180221"),
+               layer = "eez_v10",
+               quiet = T,
+               stringsAsFactors = F) %>% 
+  clean_names() %>% 
+  filter(iso_ter1 %in% countries) %>% 
+  st_simplify(dTolerance = 0.1)%>% 
+  st_transform(crs = proj) %>% 
+  select(iso3 = iso_ter1)
+```
+
+Load ecoregions data, fix names, and reproject
+
+```{r}
+meow <- read_sf(dsn = here("raw_data","spatial","MEOW"),
+                layer = "meow_ecos",
+                quiet = T,
+                stringsAsFactors = F) %>% 
+  janitor::clean_names() %>% 
+  st_transform(crs = proj)
+```
+
+Break ecoregions and EEZ by areas where they intersect, calculate the area and create a code name for each new polygon
+
+```{r}
+eez_ecoregion <- EEZ %>% 
+  st_intersection(meow) %>% 
+  mutate(area = st_area(.),
+         eez_ecoregion_area = as.numeric(area) / 1e6,
+         eez_ecoregion = paste(iso3, ecoregion, sep = "_")) %>% 
+  select(iso3, eez_ecoregion, realm, province, ecoregion, eez_ecoregion_area)
+```
+
+Visualize the new parts
+
+```{r}
+ggplot() +
+  geom_sf(data = coastline, color = "black", fill = "transparent") +
+  geom_sf(data = eez_ecoregion, aes(fill = iso3)) +
+  theme(panel.grid.major = element_line(colour = "transparent"),
+        axis.text = element_text(size = 8))
+```
+
+# Part 2 MPAS
+
+## For polygons
+
+Break every MULTIPOLYGON into single POLYGONS `st_cast()` and calculate the area of each of these new polygons. As soon as we read, we filter out undesired countries and iucn categories. We validate all polygons and proceed to `cast` each MPA into individual polygons. Then we calculate the individual area of eachnew polygon and reproject. We finilize by selecting the variables we care about.
+
+```{r}
+mpa_poly <- read_sf(dsn = here("raw_data","spatial","WDPA_Mar2018"),
+                    layer = "WDPA_Mar2018_marine-shapefile-polygons",
+                    quiet = T,
+                    stringsAsFactors = F) %>% 
+  janitor::clean_names() %>%
+  filter(iso3 %in% countries) %>%
+  st_make_valid() %>% 
+  st_cast(to = "POLYGON") %>%
+  mutate(mpa_area = st_area(.),
+         mpa_area = as.numeric(mpa_area) / 1e6) %>%
+  st_transform(crs = proj) %>% 
+  select(wdpaid, name, iucn_cat, mpa_area) %>% 
+  mutate(source = "polygons")
+```
+
+## For points
+
+Create a buffer arround the point, with a radius that creates an equivalent area
+Convert buffer into a polygon
+Make sure area of polygon is the same as area in the data
+Make sure to have an object of class POLYGON and not MULTIPOLYGON
+
+```{r}
+mpa_points <- read_sf(dsn = here("raw_data", "spatial", "WDPA_Mar2018"),
+                      layer = "WDPA_Mar2018_marine-shapefile-points",
+                      quiet = T,
+                      stringsAsFactors = F) %>% 
+  janitor::clean_names() %>%
+  filter(iso3 %in% countries) %>% 
+  select(wdpaid, name, iucn_cat, rep_m_area, rep_area) %>% 
+  sfc_as_cols(names = c("lon", "lat")) %>% 
+  mutate(radius = (sqrt(rep_area / pi)) / (cos(deg2rad(lat)) * 111.32)) %>% 
+  st_buffer(dist = .$radius) %>% 
+  mutate(test_area = st_area(.),
+         test_area = as.numeric(test_area) / 1e6,
+         diff = test_area - rep_area)
+
+ggplot(mpa_points) +
+  geom_density(aes(x = rep_area), fill = "steelblue", alpha = 0.3) +
+  geom_density(aes(x = test_area), fill = "green", alpha = 0.3)
+
+ggplot(mpa_points, aes(x = rep_area, y = test_area)) +
+  geom_point() +
+  geom_abline()
+
+mpa_points <- mpa_points %>% 
+  st_transform(crs = proj) %>% 
+  select(wdpaid, name, iucn_cat, mpa_area = rep_area) %>% 
+  mutate(source = "points")
+  
+```
+
+Put polygons and points (now also polygons) together
+Break these new polygons by the eez-ecoregion polygons calculated before
+Group_by eez-ecoregion and calculate total and relative protection
+
+```{r}
+eez_ecoregion_protection <- rbind(mpa_poly, mpa_points) %>% 
+  st_intersection(eez_ecoregion) %>% 
+  mutate(cropped_mpa_area = st_area(.),
+         cropped_mpa_area = as.numeric(cropped_mpa_area / 1e6)) %>% 
+  group_by(eez_ecoregion, eez_ecoregion_area) %>% 
+  summarize(total_protected = sum(cropped_mpa_area)) %>% 
+  ungroup() %>% 
+  mutate(percent_protected = total_protected / eez_ecoregion_area) %>% 
+  st_set_geometry(NULL) %>% 
+  select(eez_ecoregion, total_protected, percent_protected)
+
+temp <- eez_ecoregion %>% 
+  left_join(eez_ecoregion_protection, by = "eez_ecoregion")
+
+ggplot() +
+  geom_sf(data = coastline, color = "black") +
+  geom_sf(data = temp, aes(fill = percent_protected)) +
+  scale_fill_viridis_c() +
+  theme(panel.grid.major = element_line(colour = "transparent"),
+        axis.text = element_text(size = 8))
+```
+
+# Part 3 Fishing effort
+
+First I read in the fishing effort
+
+```{r}
+mean_binned_fishing <- read.csv(here("data", "mean_yearly_fishing_effort.csv")) %>% 
+  filter(mean_fishing_hours > 0)
+```
+
+Mask fishing effort points to keep things within each eez-ecoregion
+
+```{r}
+masked_mean_binned_fishing <- mean_binned_fishing %>% 
+  filter(between(lon_bin, -118, -55),
+         between(lat_bin, -67, 33)) %>%
+  st_as_sf(coords = c("lon_bin", "lat_bin"), crs = proj) %>% 
+  st_intersection(y = eez_ecoregion) %>%
+  sfc_as_cols(names = c("lon", "lat")) %>% 
+  st_set_geometry(NULL) %>% 
+  group_by(eez_ecoregion, eez_ecoregion_area) %>% 
+  summarize(hours = sum(mean_fishing_hours)) %>% 
+  ungroup() %>% 
+  mutate(norm_hours = hours / eez_ecoregion_area)
+```
+
+```{r}
+temp2 <- eez_ecoregion %>% 
+  left_join(masked_mean_binned_fishing, by = "eez_ecoregion")
+
+ggplot() +
+  geom_sf(data = coastline, color = "black") +
+  geom_sf(data = temp2, aes(fill = norm_hours)) +
+  scale_fill_viridis_c() +
+  theme(panel.grid.major = element_line(colour = "transparent"),
+        axis.text = element_text(size = 8))
+```
+
+## Masterplot
+
+```{r}
+masterdata <- eez_ecoregion %>% 
+  left_join(masked_mean_binned_fishing, by = "eez_ecoregion") %>% 
+  left_join(eez_ecoregion_protection, by = "eez_ecoregion") %>% 
+  replace_na(replace = list(norm_hours = 0, percent_protected = 0))
+
+ggplot(masterdata, aes(x = percent_protected, y = norm_hours, color = ecoregion, shape = iso3)) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = 0.1, linetype = "dashed") +
+  geom_hline(aes(yintercept = mean(norm_hours, na.rm = T)), linetype = "dashed") +
+  scale_shape_manual(values = c(1:11)) +
+  theme(legend.position = "none")
+```
+
+## Now with america
+
+```{r}
+america_masterdata <- readRDS(here("data", "america_masterdata.rds"))
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = coastline, color = "black") +
+  geom_sf(data = america_masterdata, aes(fill = percent_protected)) +
+  scale_fill_viridis_c() +
+  theme(panel.grid.major = element_line(colour = "transparent"),
+        axis.text = element_text(size = 8))+
+  xlim(-180, -20)
+```
+
+
+```{r}
+ggplot() +
+  geom_sf(data = coastline, color = "black") +
+  geom_sf(data = america_masterdata, aes(fill = norm_hours)) +
+  scale_fill_viridis_c() +
+  theme(panel.grid.major = element_line(colour = "transparent"),
+        axis.text = element_text(size = 8)) +
+  xlim(-180, 0)
+```
+
+
+```{r}
+america_masterdata %>% 
+  filter(norm_hours < 3,
+         percent_protected < 1) %>% 
+  ggplot(aes(x = percent_protected, y = norm_hours, fill = province)) +
+  geom_point(size = 4, shape = 21, color = "black", alpha = 0.5) +
+  geom_vline(xintercept = 0.1, linetype = "dashed") +
+  geom_vline(xintercept = 0.3, linetype = "dashed") +
+  theme_bw() +
+  scale_fill_brewer(palette = "Paired", name = "Realm") +
+  labs(x = "Percent protected", y = "Fishing (hours / km2)", caption = "Fishing effort and percentage of protected areas by Ecoregion and EEZ")
+```
+
+
+
+
+
+
+

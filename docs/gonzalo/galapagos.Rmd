@@ -1,0 +1,163 @@
+---
+title: "Untitled"
+author: "Juan Carlos Villaseñor-Derbez"
+date: "31 de mayo de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T,
+                      warning = F,
+                      mesage = F)
+```
+
+# Housekeeping
+
+```{r}
+## Clear the environment
+rm(list = ls())
+
+# Load packages
+suppressPackageStartupMessages({
+  library(janitor)
+  library(here)
+  library(lwgeom)
+  library(sf)
+  library(tidyverse)
+})
+
+# Source functions
+source(here("scripts","sfc_as_cols.R"))
+
+deg2rad <- function(deg){
+  (deg * pi) / (180)
+  }
+```
+
+```{r}
+proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+
+```
+
+```{r}
+EEZ <- read_sf(dsn = here("raw_data","spatial","World_EEZ_v10_20180221"),
+               layer = "eez_v10",
+               quiet = T,
+               stringsAsFactors = F) %>% 
+  clean_names() %>% 
+  filter(iso_ter1 %in% c("ECU", "PER")) %>% 
+  st_transform(crs = proj) %>% 
+  select(iso3 = iso_ter1)
+```
+
+```{r}
+mpa_poly <- read_sf(dsn = here("raw_data","spatial","WDPA_Mar2018"),
+                    layer = "WDPA_Mar2018_marine-shapefile-polygons",
+                    quiet = T,
+                    stringsAsFactors = F) %>% 
+  janitor::clean_names() %>%
+  filter(wdpaid == 10708) %>%
+  st_make_valid() %>% 
+  st_transform(crs = proj) %>% 
+  select(wdpaid, name, iucn_cat) %>% 
+  mutate(source = "polygons")
+```
+
+```{r}
+months <- data.frame(month = 1:12,
+                     month_t = month.abb)
+
+binned_fishing <- read.csv(here("data", "galapagos_total_yearly_fishing_effort.csv")) %>% 
+  filter(total_fishing_hours > 0) %>% 
+  left_join(months, by = "month") %>% 
+  mutate(date = lubridate::date(paste(year, month, "1", sep = "-")),
+         quarter = case_when(month %in% c(1, 2, 3) ~ 1,
+                            month %in% c(4, 5, 6) ~ 2,
+                            month %in% c(7, 8, 9) ~ 3,
+                            month %in% c(10, 11, 12) ~ 4))
+```
+
+```{r, fig.height = 10}
+total <- binned_fishing %>% 
+  group_by(lon_bin, lat_bin) %>% 
+  summarize(hours = sum(total_fishing_hours)) %>% 
+  ungroup()
+
+ggplot() +
+  geom_sf(data = EEZ[3:5,], fill = "transparent", size = 1) +
+  geom_sf(data = mpa_poly, fill = "transparent", linetype = "dashed", color = "red", size = 1)  +
+  geom_raster(data = total, aes(x = lon_bin, y = lat_bin, fill = hours)) +
+  scale_fill_viridis_c(trans = "log10", name = "Fishing hours") +
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude") +
+  scale_x_continuous(expand = c(0,0), limits = c(-100, -80)) +
+  scale_y_continuous(expand = c(0,0), limits = c(-8, 8))
+
+ggsave(filename = here::here("docs", "gonzalo", "total.tiff"), width = 10, height = 10, units = "in")
+```
+
+```{r, fig.height = 10, fig.width = 10}
+yearly <- binned_fishing %>% 
+  group_by(year, lon_bin, lat_bin) %>% 
+  summarize(hours = sum(total_fishing_hours)) %>% 
+  ungroup()
+
+ggplot() +
+  geom_sf(data = EEZ[2,], fill = "transparent", size = 1) +
+  geom_sf(data = mpa_poly, fill = "transparent", linetype = "dashed", color = "red", size = 1)  +
+  geom_raster(data = yearly, aes(x = lon_bin, y = lat_bin, fill = hours)) +
+  facet_wrap(~year, ncol = 2) +
+  scale_fill_viridis_c(trans = "log10") +
+  theme_bw() +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0))
+
+ggsave(filename = here::here("docs", "gonzalo", "yearly.tiff"), width = 10, height = 10, units = "in")
+```
+
+```{r, fig.height = 10}
+quarterly <- binned_fishing %>% 
+  group_by(year, quarter, lon_bin, lat_bin) %>% 
+  summarize(hours = sum(total_fishing_hours)) %>% 
+  ungroup()
+
+ggplot() +
+  geom_sf(data = EEZ[2,], fill = "transparent", size = 1) +
+  geom_sf(data = mpa_poly, fill = "transparent", linetype = "dashed", color = "red", size = 1)  +
+  geom_raster(data = quarterly, aes(x = lon_bin, y = lat_bin, fill = hours)) +
+  facet_grid(year ~ quarter) +
+  scale_fill_viridis_c(trans = "log10") +
+  theme_bw() +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0))
+
+ggsave(filename = here::here("docs", "gonzalo", "quarterly.tiff"), width = 10, height = 10, units = "in")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

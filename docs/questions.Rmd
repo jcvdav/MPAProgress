@@ -1,0 +1,49 @@
+---
+title: "Questions"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Background
+
+Marine Protected areas are increasingly being implemented to protect marine biodiversity. Countries have agreed to protect 10% of coastal oceans by 2020. It is imperative not only that we assess where we stand (example of descriptive paper of where we stand), but also that we understand what has happened and learn from these to see what will happen. New datasets of global fishing effort and marine protected areas allow us to ask questions at the biosphere level to better understand the pas, present and future of marine conservation. In concrete, the objectives are to answer the following questions: 1) what have MPAs done to fishing effort? 2) What is the current state of Marine conservation? And 3) where do we go now?
+
+# Questions
+
+The three main questions are:
+
+## Past
+
+- What has happened to fishing effort when MPAs were put in place? Is it re-distributed or reduced?
+
+    - Analysis of Fishing effort changing or re-dispersing
+  
+- Graph of cumulative protection by ecoregion / province (with facet by realm). Perhaps also include timeseries of fishing effort by ecoregion here?
+  
+  
+## Present
+
+- What is the state of marine conservation by ecoregion?
+
+    - Map of MPAs with marginal density plots
+  
+    - An "MPA Kobe plot" with percent protection on x-axis, fishing hours on y-axis, and species richness on dot size. Color dots by realm, but eac hdot is an EEZ-ecoregion.
+  
+- How many species are protected by ecoregion?
+
+    - Barhchart of species by ecoregion vs. species likely within MPAs by ecoregion
+  
+- Are there differential protections for a same ecoregion across EEZs? (For example, MLPA in CA vs Nothing in Mexico, but both are part of the SC bight)
+
+## Future
+
+- What are areas of opportunity and challenges?
+
+- Where do we put the next MPAs?
+
+- What ecoregions need more protection?
+    
+    
