@@ -7,3 +7,4 @@ logs/
 *.log
 .Rproj.user
 .RDataTmp
+raw_data/spatial/
