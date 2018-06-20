@@ -91,6 +91,3 @@ gfw_data_2016 %>%
 
 ## Close connection
 spark_disconnect_all()
-
-
-
