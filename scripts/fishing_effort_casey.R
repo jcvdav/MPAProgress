@@ -41,14 +41,14 @@ sc <- spark_connect(master = "local")
 
 
 ## Read the first rows of a sample dataset of January 1st 2012
-gfw <- read.csv(here("raw_data","gfw_daily","2012-01-01.csv"), nrows = 10) %>% 
+gfw <- read.csv(here("data", "gfw_data", "gfw_daily","2012-01-01.csv"), nrows = 10) %>% 
   map(function(x){"character"})
 
 
 ## Load all data into sparkly local session
 gfw_data <- spark_read_csv(sc = sc,
                            name = "gfw_data",
-                           path = here("raw_data","gfw_daily"),
+                           path = here("data", "gfw_data", "gfw_daily"),
                            columns = gfw,
                            infer_schema = F)
 
@@ -64,20 +64,7 @@ gfw_data_2016 <- gfw_data %>%
          lat_bin = lat_bin / 10)
 
 ## Define CRS
-proj <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
-
-## Get total fishing effort by month and lat/lon bin,
-## average across months, rasterize, and export as *.grd raster
-gfw_data_2016 %>% 
-  group_by(month, lon_bin, lat_bin) %>%
-  summarize(total_fishing_hours = sum(fishing_hours, na.rm = T)) %>% 
-  ungroup() %>% 
-  group_by(lon_bin, lat_bin) %>% 
-  summarize(total_fishing_hours = mean(total_fishing_hours, na.rm = T)) %>% 
-  ungroup() %>%
-  collect() %>% 
-  raster::rasterFromXYZ(crs = proj) %>% 
-  writeRaster(filename = here("data", "monthly_mean_fishing_hours_casey.grd"), overwrite = T)
+proj <- "+proj=cea +lon_0=0 +lat_ts=45 +x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs"
 
 ## Get total fishing effort for 2016, summ across all days,
 ## rasterize and export as *.grd
@@ -87,7 +74,7 @@ gfw_data_2016 %>%
   ungroup() %>%
   collect() %>% 
   raster::rasterFromXYZ(crs = proj) %>% 
-  writeRaster(filename = here("data", "total_fishing_hours_casey.grd"))
+  writeRaster(filename = here("data", "total_fishing_hours_casey.tif"))
 
 ## Close connection
 spark_disconnect_all()

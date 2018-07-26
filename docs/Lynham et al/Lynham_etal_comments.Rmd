@@ -1,0 +1,246 @@
+---
+title: "What is the economic impact of Large-Scale MPAs in the Pacific Ocean?"
+subtitle: "Authors: John Lynham; Anton Nikolaev; Thais Vilela"
+author: "Comments by Juan Carlos Villaseñor-Derbez"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 4
+bibliography: references.bib
+header-includes:
+  - \usepackage{float}
+  - \floatplacement{figure}{H}
+---
+
+```{r, echo = F}
+suppressPackageStartupMessages({
+  library(tidyverse)
+})
+```
+
+# Possible contributions
+
+As I understand the efforts made so far, there are two straightforward ways in which I could contribute to this study. For the first one I would help strengthen the analysis of NOAA Observer and GFW data for the US PNMs. The second one would involve conducting the analysis of GFW data for PIPA, and translating the results into implications for Palau. I discuss these two in greater detail in the next paragraphs.
+
+## US Pacific Monuments
+
+In this section I include possible analysis in which I could help. When relevant, I include quotes to provide context. Comments are organized with headings similar to the ones included in the original manuscript. I believe my suggestions would compliment (rather than replace) current analysis, and I acknowledged that you might have already tried some or that due to data constraints not all of them are possible.
+
+### Total revenue
+
+"It is very clear from the figure that total catch of bigeye has not declined as a result of the 2014 or
+2016 expansions". Of course, I have not reviewed the data. But is it safe to conclude this? At least through time there isn't an evident decrease, but what would have catches looked like had PMNM not been expanded? Have you compared these to the trends by the American Samoa fleet? Perhaps a DiD if AS can serve as a plausible counterfactual?
+
+Not sure if the spatial resolution (*i.e.* Catch Blocks) in logbooks allows this comparison, but it would be interesting to see what proportion of catches (or at least sets) originally came from waters inside the PMNM. Perhaps the georeferenced catches from NOAA Observer data can provide insights into this (if not for the entire fleet, at least for the 20% quasi-random subset).
+
+On aggregate the fleet brought in more money in 2015 and 1016 than in previous year, but you discuss the possibility that the distributional effects of this might be different. I would assume that vessels who fished the most in the PMNM area were the ones who took the toughest hit.
+
+### Total costs
+
+So far this section describes the available data, but it it's not clear whether the empirical strategy is fully developed. I can think of two ways in which we could estimate the costs.
+
+### NOAA Observer program
+
+You mention that a drawback of this dataset is that you only observe fishing events, and not the entire trip (*i.e.* the search and travel). It might be worth looking into combining this with GFW data. NOAA observer program would provide real fishing events (as opposed to the ones predicted by GFW's neural net), and GFW would provide the entire track. Given that NOOA data cover 20% and GFW only contain 60 boats, we will not get full coverage. If this doesn't yield better data, it would at least help determine if the three-day space between sets is an appropriate way of grouping them into "trips".
+
+### GFW Data
+
+We could partially test this by looking at the almost 60 vessels and calculate an estimate of fuel consumption (following @sala_2018), which, paired with fuel prices, might provide cost estimates[^1]. Initially this would just be a regression with a policy dummy (and appropriate vessel- and month-level FE's). We could look into GFW data to identify plausible counterfactuals to include  a control group[^2].
+
+[^1]: Of course, there are additional costs (*e.g.* crew, ice, bait, gear), but fuel should represent a large portion of this and should scale with some measures of fishing effort (time and distance). If this is not enough, the previous comparison of catches (sets) that came from PMNM waters before the implementation could provide some insights.
+
+[^2]: GFW increased coverage when they added from more satellites, particularly towards the end of 2016 and throughout 2017, I believe. I think it would be important to use counterfactuals in any GFW-related analyses to account for the expected temporal trend in increased effort.
+
+\clearpage
+
+## PIPA
+
+```{r, echo = F}
+pipa_vessels <- read.csv(here::here("data", "vessels_inside_pipa.csv"))
+
+n_prev <- pipa_vessels %>% 
+  filter(year < 2015) %>%
+  group_by(year, mmsi) %>% 
+  summarize(n_points = sum(n_points),
+            hours = sum(total_fishing_hours))
+
+mmsis <- unique(n_prev$mmsi)
+```
+
+As I mentioned on the call, I have been working with vessels who fished in PIPA a an earlier stage of my PhD research. I've identified the vessels that fished inside PIPA before 2015. In total there are `r length(unique(pipa_vessels$mmsi))`[^3] vessels that have fished within PIPA waters. From these, `r length(unique(n_prev$mmsi))` did so at least once before 2015 and on average exerted `r mean(n_prev$hours)` $\pm$ `r sd(n_prev$hours)` hours each year. A significant number of these vessels fished in PIPA and adjacent waters. We can see where they fished before and track where they went after 2015.
+
+In this section I present some of the preliminary results of regressions similar to what you have conducted for US MNMs. First, I explore patterns of fishing effort only inside PIPA (Fig. \ref{fig:blue_para}). Consistent with the blue paradox, we see an increase in the number of vessels, total hours, mean hours, and number of data points between 2014 and 2015. Shortly after that, all measures decrease in 2015[^4].
+
+<!-- First, I believe that my contribution would be greatest in analysing the impacts of the PIPA expansion and translating that into possible implications for Palau. I have included some very preliminary results from PIPA that are similar to what you have done for PMNM. -->
+
+<!-- - I believe I could "replicate" the analysis from PMNM and apply them to the GFW data for PIPA. The second contribution would be towards strengthening the analysis of NOAA Observer and GFW data for PMNM.  -->
+
+[^3]: Perhaps some of these vessels only fished there for a couple hours one year. Therefore, I would need to further identify which ones were transient vs local using some cutoff. For now, I use run regressions for all vessels and for vessels that fly the Kiribati flag (n = 12). The true number lies between these two groups, but it provides a starting point.
+
+[^4]: See McDermott et al., (*in review*) for further information
+
+```{r, echo = F, fig.cap = "\\label{fig:blue_para}Monthly hours, number of vessels, and data points observed inside PIPA. These clearly show the blue-paradox effect."}
+pipa_vessels %>% 
+  group_by(year, month, mmsi) %>% 
+  summarize(n_points = sum(n_points),
+            hours = sum(total_fishing_hours)) %>% 
+  group_by(year, month) %>% 
+  summarize(total_hours = sum(hours),
+            mean_hours = mean(hours),
+            n_points = sum(n_points),
+            n_mmsi = n()) %>% 
+  ungroup() %>% 
+  mutate(date = lubridate::date(paste(year, month, "01", sep = "/")),
+         post = year >= 2015) %>% 
+  select(-year) %>% 
+  gather(variable, value, -c(date, month, post)) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_line() +
+  geom_point(aes(color = post)) +
+  facet_wrap(~variable, scales = "free", ncol = 2) +
+  theme_bw() +
+  scale_color_brewer(palette = "Set1")
+```
+
+\clearpage
+
+Then, I look at the entire fishing effort of vessels that fished at least once in PIPA before 2015. In other words, I use GFW data to track vessel-level activities inside and outside PIPA before and after 2015. However, all boats included in this case fished at least once in PIPA before 2015 (*i.e.* no control group). First I look at vessels whose `mmsi` code starts with `529`, indicating that they come from Kiribati [^5]. The overall pattern for fishing time (total and mean) show a downward trend that initiated well before 2015 (Fig. \ref{fig:kir_vessels}). The number of vessels as given by unique mmsi numbers shows a maximum near the end of 2014, and then decreases after 2015.
+
+Given the similar trends observed in total fishing hours and mean fishing hours, I calculate total fishing hours at the year-month-vessel level and regress that on a `post` dummy that indicates years before or after 2015. Results of this regression are presented in Table \ref{tab:kir_vessels}. In this table, column (1) presents the regression only against the policy dummy, column (2) includes month fixed effects, column (3) includes month and year fixed effects, and column (4) includes month, year, and vessel fixed effects. All three specifications show negative coefficients. The full model explains 71% of the variance in monthly fishing hours by vessel. This specification has the lowest policy coefficient (labeled `post`), and it is not different from zero at the $\alpha = 0.05$ level.
+
+[^5]: link: [http://www.vtexplorer.com/mmsi-mid-codes-en/](http://www.vtexplorer.com/mmsi-mid-codes-en/)
+
+```{r, echo = F, fig.cap = "\\label{fig:kir_vessels}Fishing hours and number of 12 Kiribati vessels from 2012 - 2016 that at some point fished inside PIPA."}
+effort_by_vessel <- read.csv(here::here("data", "pipa_effort_by_vessel.csv")) %>% 
+  # filter(between(year, 2014, 2016)) %>%
+  filter(mmsi %in% mmsis) %>%
+  mutate(mmsi = as.character(mmsi),
+         month = as.character(month),
+         year = as.character(year))
+
+effort_by_vessel %>% 
+  filter(kir) %>% 
+  group_by(year, post, month) %>% 
+  summarize(total_hours = sum(hours),
+            mean_hours = mean(hours),
+            n_mmsi = n()) %>% 
+  ungroup() %>% 
+  mutate(date = lubridate::date(paste(year, month, "01", sep = "/"))) %>% 
+  select(-year) %>% 
+  gather(variable, value, -c(date, month, post)) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_line() +
+  geom_point(aes(color = post)) +
+  facet_wrap(~variable, scales = "free", ncol = 2) +
+  theme_bw() +
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r, results = "asis", echo = F}
+kir_vessel <- effort_by_vessel %>% 
+  filter(kir)
+
+m1 <- lm(hours ~ post, data = kir_vessel)
+m2 <- lm(hours ~ post + month, data = kir_vessel)
+m3 <- lm(hours ~ post + month + year, data = kir_vessel)
+m4 <- lm(hours ~ post + month + year + mmsi, data = kir_vessel)
+
+models <- list(m1, m2, m3, m4)
+
+stargazer::stargazer(models,
+                     se = commarobust::makerobustseslist(models),
+                     type = "latex",
+                     omit = c("mmsi", "year", "month"),
+                     add.lines = list(c("Month FE", "No", "Yes", "Yes", "Yes"),
+                                      c("Year FE", "No", "No", "Yes", "Yes"),
+                                      c("Vessel FE", "No", "No", "No", "Yes")),
+                     omit.stat = c("adj.rsq", "f", "ser"),
+                     header = F,
+                     title = "\\label{tab:kir_vessels}Fishing hours from GFW for vessels flying Kiribati flag (n = 12). Asterisks indicate significance levels. Numbers in parenthesis represent heteroskedastic-robuste standard errors.")
+```
+
+\clearpage
+
+I then repeat a similar analysis but for all fishing vessels that fished at least once inside PIPA before 2015. In this case this likely represents an underestimate of the effect, as it could include vessels who once fished inside PIPA, but are not even in the region any more. In this case, the previous analysis includes only vessels flying the Kiribati flag, and this represents all vessels. The number of unique mmsi codes (Fig. \ref{fig:all_vessels}) follows a similar pattern as in the previous case. However, mean hours and total hours show stable trends before and after. Results of the regressions are shown in Table \ref{tab:all_vessels}. Like before, column (1) presents the regression only against the policy dummy, column (2) includes month fixed effects, column (3) includes month and year fixed effects, and column (4) includes month, year, and vessel fixed effects.
+
+```{r, echo = F, fig.cap = "\\label{fig:all_vessels}Fishing hours and number of vessels by month for all vessels that fished inside PIPA at least once."}
+effort_by_vessel %>% 
+  group_by(year, post, month) %>% 
+  summarize(total_hours = sum(hours),
+            mean_hours = mean(hours),
+            n_mmsi = n()) %>% 
+  ungroup() %>% 
+  mutate(date = lubridate::date(paste(year, month, "01", sep = "/"))) %>% 
+  select(-year) %>% 
+  gather(variable, value, -c(date, month, post)) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_line() +
+  geom_point(aes(color = post)) +
+  facet_wrap(~variable, scales = "free", ncol = 2) +
+  theme_bw() +
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r, results = "asis", echo = F}
+m1 <- lm(hours ~ post, data = effort_by_vessel)
+m2 <- lm(hours ~ post + month, data = effort_by_vessel)
+m3 <- lm(hours ~ post + month + year, data = effort_by_vessel)
+m4 <- lm(hours ~ post + month + year + mmsi, data = effort_by_vessel)
+
+models <- list(m1, m2, m3, m4)
+
+stargazer::stargazer(models,
+                     se = commarobust::makerobustseslist(models),
+                     type = "latex",
+                     omit = c("mmsi", "year", "month"),
+                     add.lines = list(c("Month FE", "No", "Yes", "Yes", "Yes"),
+                                      c("Year FE", "No", "No", "Yes", "Yes"),
+                                      c("Vessel FE", "No", "No", "No", "Yes")),
+                     omit.stat = c("adj.rsq", "f", "ser"),
+                     header = F,
+                     title = "\\label{tab:all_vessels}Fishing hours from GFW for all vessels (n = 206) that at some point fished in PIPA. Asterisks indicate significance levels. Numbers in parenthesis represent heteroskedastic-robuste standard errors.")
+
+```
+
+\clearpage
+
+### Further work
+
+In order to strengthen this analysis, I would like to identify an appropriate sample of vessels that serve as a treatment group. Ideally, this would get rid of vessels that sporadically fished for insignificant time in PIPA, and are therefore unlikely to be affected. This would include between 12 and `r length(unique(n_prev$mmsi))` (number of Kiribati vessels vs. number of all vessels who fished in PIPA at least once before 2015).
+
+I would also like to explore the possibility of identifying a plausible counterfactual. That way we could do something like a DiD. I think it is possible to identify counterfactual boats. I would start by identifying vessels who meet at least these four criteria: i) fish in near-by regions, ii) have same gear as vessels from PIPA, and iii) having similar length of data, and iv) never fished inside PIPA.
+
+Additionally, running similar regressions on distance traveled, and total vessel hours (not just fishing), that could account for the extended "search" time.
+
+# Other details
+
+- The introduction states that the main objective is to quantify the economic impacts of vLPAs and compare the cost per hectare to vLPAs on land. I think this would provide an interesting benchmark on cost of conservation per unit area in land vs sea. I would perhaps highlight the part about predicting the possible effects of the Palau MPA.
+
+- I think the novelty of the paper can be highlighted even more. @stevenson_2013 evaluated the consequences of fishing displacement from MPAs in Hawaii (a smaller network and totally different fleet). They show that fishing effort was indeed displaced to places further away from ports representing increased costs, but that CPUE also increased. Overall, they don't find a negative impact on the *perceived* socioeconomic well-being of fishers. However, they do not have plausible counterfacutals and rely on before-after comparisons of perceptions. I think the novelty of this paper is not only the size, resolution, and quality of the data, but the fact that it has a BACI design enabling the identification of the net effect that vLPAs have on fishers. And also the larger contribution to vLPAs (and MPAs in general) literature.
+- Recent work by @sala_2018 shows that a large portion of high-seas fishing is only profitable thanks to subsidies. This could compliment @white_2014 and @sumaila_2015 in the introduction.
+
+- "Neither of these datasets is perfect but hopefully combined they will paint a clear picture of what the impact has been". I find this to be a modest (or humble?) and powerful sentence that highlights the efforts made to identify effects from different sources, and that acknowledges possible data limitations. This sentence should be included alongside the "novelty" in the last paragraph of the introduction.
+
+- Findings by @smith_2006 show negative effects, but the reserves were only in place for a short period. I believe they talk about this in their discussion. @edgar_2014-UO and @difranco_2016-Xw show how the effects (at least inside vs outside the reserve) can take up to 10 years.
+
+- I would be cautious on the interpretation of results by @sumaila_2015. They do show that < 0.01% of catch and landed values come *exclusively* from the high seas, but also that 67% and 72% (catch and value) come from Both EEZs and High seas, and the remaining from EEZs only. @pauly_2016 show that ~6% of landings come from the high seas (Fig. \ref{fig:eez-hs}). It's perhaps a minor detail, but thought I'd point it out.
+
+```{r, echo = F, fig.height = 3, fig.width = 6, fig.cap = "\\label{fig:eez-hs} Percentage of catches that come from the high-seas vs. EEZs. (data from [Sea Around Us](www.seaaroundus.org))."}
+seaaroundus::eezsvshighseas() %>% 
+  magrittr::set_colnames(value = c("year", "EEZ", "High-seas")) %>% 
+  gather(source, percent, -year) %>% 
+  mutate(source = fct_relevel(source, "High-seas")) %>% 
+  ggplot2::ggplot(aes(x = year, y = percent, fill = source)) +
+  geom_area(alpha = 0.5) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_bw() +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  geom_hline(yintercept = 94, linetype = "dashed") +
+  labs(x = "Year", y = "Percentage", fill = "Source")
+```
+
+\clearpage
+
+# References
