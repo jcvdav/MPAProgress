@@ -30,23 +30,25 @@ In this section I include possible analysis in which I could help. When relevant
 ### Total revenue
 
 "It is very clear from the figure that total catch of bigeye has not declined as a result of the 2014 or
-2016 expansions". Of course, I have not reviewed the data. But is it safe to conclude this? At least through time there isn't an evident decrease, but what would have catches looked like had PMNM not been expanded? Have you compared these to the trends by the American Samoa fleet? Perhaps a DiD if AS can serve as a plausible counterfactual?
+2016 expansions". Of course, I have not reviewed the data. But is it safe to conclude this? At least through time there isn't an evident decrease, but what would have catches looked like had PMNM not been expanded?
 
-Not sure if the spatial resolution (*i.e.* Catch Blocks) in logbooks allows this comparison, but it would be interesting to see what proportion of catches (or at least sets) originally came from waters inside the PMNM. Perhaps the georeferenced catches from NOAA Observer data can provide insights into this (if not for the entire fleet, at least for the 20% quasi-random subset).
+Not sure if the spatial resolution (*i.e.* Catch Blocks) in logbooks allows this comparison, but it would be interesting to see what proportion of catches (or at least sets / hours) originally came from waters inside the PMNM. Perhaps the georeferenced catches from NOAA Observer data can provide insights into this (if not for the entire fleet, at least for the 20% quasi-random subset), or we can use GFW data to see if the proportion of fishing hours inside PMNM roughly corresponds to 10M in revenues (we can test different "catch rates" to account for the fact that catches inside vs outside may not map 1:1). Perhaps this catch efficiency ratio can be extracted from the NOAA Observer data?
 
-On aggregate the fleet brought in more money in 2015 and 1016 than in previous year, but you discuss the possibility that the distributional effects of this might be different. I would assume that vessels who fished the most in the PMNM area were the ones who took the toughest hit.
+On aggregate the fleet brought in more money in 2015 and 1016 than in previous year, but you discuss the possibility that the distributional effects of this might be different. I would assume that vessels who fished the most in the PMNM area were the ones who took the toughest hit. If possible, it might be interesting to birefly look at distributional effects for the discussion.
 
-### Total costs
+### Total costs (TC)
 
-So far this section describes the available data, but it it's not clear whether the empirical strategy is fully developed. I can think of two ways in which we could estimate the costs.
+So far this section describes the available data, but it it's not clear whether the empirical strategy is fully developed. Just like the datasets, a there isn't a single best analysis that provides the answer, but looking at it from as many was as possible might help paint a full picture of the effects that vLPAs have had.Here I provide some ideas in which we could use the two main datasets (NOAA and GFW data) to indirectly test the claims made by the fleet.
 
-### NOAA Observer program
+#### TC from NOAA Observer program
 
-You mention that a drawback of this dataset is that you only observe fishing events, and not the entire trip (*i.e.* the search and travel). It might be worth looking into combining this with GFW data. NOAA observer program would provide real fishing events (as opposed to the ones predicted by GFW's neural net), and GFW would provide the entire track. Given that NOOA data cover 20% and GFW only contain 60 boats, we will not get full coverage. If this doesn't yield better data, it would at least help determine if the three-day space between sets is an appropriate way of grouping them into "trips".
+You mention that a drawback of this dataset is that you only observe fishing events, and not the entire trip (*i.e.* the search and travel). It might be worth looking into combining this with GFW data. NOAA observer program would provide real fishing events (as opposed to the ones predicted by GFW's neural net), and GFW would provide the entire track. Given that NOAA data cover 20% and GFW only contain 60 boats, we will not get full coverage. If this doesn't yield better data, it would at least help determine if the three-day space between sets is an appropriate way of grouping them into "trips".
 
-### GFW Data
+Results in your table 3 suggest that there's been a change of ~ 20 miles (positive or negative depending on model specification), and not significant. Perhaps linking this data to GFW would provide full tracks (of a smaller portion of the fleet) to then account for distance between fishing points but also during the search and set activities.
 
-We could partially test this by looking at the almost 60 vessels and calculate an estimate of fuel consumption (following @sala_2018), which, paired with fuel prices, might provide cost estimates[^1]. Initially this would just be a regression with a policy dummy (and appropriate vessel- and month-level FE's). We could look into GFW data to identify plausible counterfactuals to include  a control group[^2].
+#### TC form GFW Data
+
+We could also test the increased cost claim by looking at the almost 60 vessels and calculate an estimate of fuel consumption (following @sala_2018), which, paired with fuel prices, might provide cost estimates[^1]. Initially this would just be a regression with a policy dummy (and appropriate vessel- and month-level FE's). We could look into GFW data to identify plausible counterfactuals to include  a control group[^2].
 
 [^1]: Of course, there are additional costs (*e.g.* crew, ice, bait, gear), but fuel should represent a large portion of this and should scale with some measures of fishing effort (time and distance). If this is not enough, the previous comparison of catches (sets) that came from PMNM waters before the implementation could provide some insights.
 
@@ -54,7 +56,9 @@ We could partially test this by looking at the almost 60 vessels and calculate a
 
 \clearpage
 
-## PIPA
+## PIPA and Palau
+
+The current approach is to estimate what percentage of fishing effort from the PNA was displaced by PIPA and use this to infer something about Palau. While this provides a measure of the displacement, it does not fully address the possibility of costs increasing. I believ we can use individual tracks (as opposed to just the gridded effort) and obtain show how their behavior changed (*i.e.* are they fishing further away, are they fishing more, where are they now?).
 
 ```{r, echo = F}
 pipa_vessels <- read.csv(here::here("data", "vessels_inside_pipa.csv"))
@@ -68,9 +72,9 @@ n_prev <- pipa_vessels %>%
 mmsis <- unique(n_prev$mmsi)
 ```
 
-As I mentioned on the call, I have been working with vessels who fished in PIPA a an earlier stage of my PhD research. I've identified the vessels that fished inside PIPA before 2015. In total there are `r length(unique(pipa_vessels$mmsi))`[^3] vessels that have fished within PIPA waters. From these, `r length(unique(n_prev$mmsi))` did so at least once before 2015 and on average exerted `r mean(n_prev$hours)` $\pm$ `r sd(n_prev$hours)` hours each year. A significant number of these vessels fished in PIPA and adjacent waters. We can see where they fished before and track where they went after 2015.
+As I mentioned in the call, I have been working with vessels who fished in PIPA as part of my PhD research. In total there are `r length(unique(pipa_vessels$mmsi))`[^3] vessels that have fished within PIPA waters. From these, `r length(unique(n_prev$mmsi))` did so at least once before 2015 and on average exerted `r mean(n_prev$hours)` $\pm$ `r sd(n_prev$hours)` hours each year. A significant number of these vessels fished in PIPA and adjacent waters. We can see where they fished before and track where they went after 2015.
 
-In this section I present some of the preliminary results of regressions similar to what you have conducted for US MNMs. First, I explore patterns of fishing effort only inside PIPA (Fig. \ref{fig:blue_para}). Consistent with the blue paradox, we see an increase in the number of vessels, total hours, mean hours, and number of data points between 2014 and 2015. Shortly after that, all measures decrease in 2015[^4].
+In this section I present some of the preliminary results of regressions similar to what you have conducted for US MNMs using hours as an estimate of fishing effort. First, I explore patterns of fishing effort only inside PIPA (Fig. \ref{fig:blue_para}). Consistent with the blue paradox, we see an increase in the number of vessels, total hours, mean hours, and number of data points between 2014 and 2015. Shortly after that, all measures decrease in 2015[^4].
 
 <!-- First, I believe that my contribution would be greatest in analysing the impacts of the PIPA expansion and translating that into possible implications for Palau. I have included some very preliminary results from PIPA that are similar to what you have done for PMNM. -->
 
@@ -162,7 +166,7 @@ stargazer::stargazer(models,
 
 \clearpage
 
-I then repeat a similar analysis but for all fishing vessels that fished at least once inside PIPA before 2015. In this case this likely represents an underestimate of the effect, as it could include vessels who once fished inside PIPA, but are not even in the region any more. In this case, the previous analysis includes only vessels flying the Kiribati flag, and this represents all vessels. The number of unique mmsi codes (Fig. \ref{fig:all_vessels}) follows a similar pattern as in the previous case. However, mean hours and total hours show stable trends before and after. Results of the regressions are shown in Table \ref{tab:all_vessels}. Like before, column (1) presents the regression only against the policy dummy, column (2) includes month fixed effects, column (3) includes month and year fixed effects, and column (4) includes month, year, and vessel fixed effects.
+I then repeat a similar analysis but for all fishing vessels that fished at least once inside PIPA before 2015. In this case this likely represents an underestimate of the effect, as it could include vessels who once fished inside PIPA, but are not even in the region any more. The number of unique mmsi codes (Fig. \ref{fig:all_vessels}) follows a similar pattern as in the previous case. However, mean hours and total hours show stable trends before and after. As opposed to only Kiribati vessels who seemed to reduce the number of fishing hours, a similar analysis of all vessels shows positive coefficients that are not statistically significant ($alpha < 0.05$). Results of the regressions are shown in Table \ref{tab:all_vessels}. Like before, column (1) presents the regression only against the policy dummy, column (2) includes month fixed effects, column (3) includes month and year fixed effects, and column (4) includes month, year, and vessel fixed effects.
 
 ```{r, echo = F, fig.cap = "\\label{fig:all_vessels}Fishing hours and number of vessels by month for all vessels that fished inside PIPA at least once."}
 effort_by_vessel %>% 
@@ -207,11 +211,11 @@ stargazer::stargazer(models,
 
 ### Further work
 
-In order to strengthen this analysis, I would like to identify an appropriate sample of vessels that serve as a treatment group. Ideally, this would get rid of vessels that sporadically fished for insignificant time in PIPA, and are therefore unlikely to be affected. This would include between 12 and `r length(unique(n_prev$mmsi))` (number of Kiribati vessels vs. number of all vessels who fished in PIPA at least once before 2015).
+In order to strengthen this analysis, I would like to identify an appropriate sample of vessels that acccurately represent the PNA. This vessels must meet at least these two points: i) belong to the PNA and ii) Have fished for a significant amount of time inside PIPA, to count as "treated". Ideally, this would get rid of vessels that sporadically fished for insignificant time in PIPA, and are therefore unlikely to be affected. This would include between 12 and `r length(unique(n_prev$mmsi))` vessels (number of Kiribati vessels vs. number of all vessels who fished in PIPA at least once before 2015).
 
-I would also like to explore the possibility of identifying a plausible counterfactual. That way we could do something like a DiD. I think it is possible to identify counterfactual boats. I would start by identifying vessels who meet at least these four criteria: i) fish in near-by regions, ii) have same gear as vessels from PIPA, and iii) having similar length of data, and iv) never fished inside PIPA.
+I would also like to explore the possibility of identifying a plausible counterfactual. That way we could do something like a DiD. I think it is possible to identify counterfactual boats. I would start by identifying vessels who meet at least these four criteria: i) fish in near-by regions, ii) have same gear as vessels from PIPA, and iii) having similar length of data, and iv) never fished inside PIPA. Perhaps an additional one would be that they belong to the PNA.
 
-Additionally, running similar regressions on distance traveled, and total vessel hours (not just fishing), that could account for the extended "search" time.
+Additionally, run similar regressions on distance traveled, and total vessel hours (not just fishing hours), that could account for the extended "search" time.
 
 # Other details
 
@@ -223,6 +227,9 @@ Additionally, running similar regressions on distance traveled, and total vessel
 - "Neither of these datasets is perfect but hopefully combined they will paint a clear picture of what the impact has been". I find this to be a modest (or humble?) and powerful sentence that highlights the efforts made to identify effects from different sources, and that acknowledges possible data limitations. This sentence should be included alongside the "novelty" in the last paragraph of the introduction.
 
 - Findings by @smith_2006 show negative effects, but the reserves were only in place for a short period. I believe they talk about this in their discussion. @edgar_2014-UO and @difranco_2016-Xw show how the effects (at least inside vs outside the reserve) can take up to 10 years.
+
+- Title: *"The economic impact of Large-Scale MPAs"*
+
 
 - I would be cautious on the interpretation of results by @sumaila_2015. They do show that < 0.01% of catch and landed values come *exclusively* from the high seas, but also that 67% and 72% (catch and value) come from Both EEZs and High seas, and the remaining from EEZs only. @pauly_2016 show that ~6% of landings come from the high seas (Fig. \ref{fig:eez-hs}). It's perhaps a minor detail, but thought I'd point it out.
 

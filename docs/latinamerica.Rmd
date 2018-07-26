@@ -70,7 +70,7 @@ coastline <- st_read(dsn = here("data", "spatial"),
                      layer = "world_coastline",
                      quiet = T,
                      stringsAsFactors = F) %>% 
-  filter(iso3 %in% countries) %>% 
+  filter(iso3 %in% countries) %>%
   mutate(coastline = 1) %>% 
   group_by(coastline) %>% 
   summarize(n = n())
@@ -218,7 +218,8 @@ First I read in the fishing effort
 
 ```{r}
 mean_binned_fishing <- read.csv(here("data", "mean_yearly_fishing_effort.csv")) %>% 
-  filter(mean_fishing_hours > 0)
+  filter(mean_fishing_hours > 0) %>% 
+  dplyr::select(lon_bin, lat_bin, mean_fishing_hours)
 ```
 
 Mask fishing effort points to keep things within each eez-ecoregion
